@@ -1,0 +1,26 @@
+{
+  "kind": "univ4_hook",
+  "hook": {
+    "contract": "StopLossHook",
+    "constructorArgs": [
+      "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543"
+    ],
+    "permissions": [
+      "beforeSwap",
+      "afterSwap"
+    ]
+  },
+  "token": {
+    "contract": "STOP",
+    "name": "Stoploss",
+    "symbol": "STOP",
+    "decimals": 18
+  },
+  "pool": {
+    "pairedCurrency": "0x0000000000000000000000000000000000000000",
+    "fee": 3000,
+    "tickSpacing": 60,
+    "initialPrice": "79228162514264337593543950336"
+  },
+  "notes": "Technical description of src/StopLossHook.sol:StopLossHook and src/STOP.sol:STOP; ABI exports are docs/abi/StopLossHook.json and docs/abi/STOP.json. The hook constructor takes only IPoolManager, using the approved Sepolia address. STOP has no constructor arguments. getHookPermissions enables exactly beforeSwap and afterSwap; all return-delta and other permissions are false. The hook address must encode permission bits 0x00c0 (192). The launch pool uses native ETH as currency0 and STOP as currency1, with LP fee 3000 and tickSpacing 60. initialPrice is decimal sqrtPriceX96 = 2^96, corresponding to tick 0 and 1 STOP per ETH for these 18-decimal assets. This value follows the accepted LaunchRehearsalTest opening price; the approved workflow does not specify a numeric opening price. The rehearsal seeds one-sided STOP liquidity below that price, then exercises a first buy into an ETH-less pool and a sell. Orders escrow STOP in per-pool, per-trigger epochs. Sells can execute at most five buckets; permissionless execute provides catch-up. Internal swaps use a triggerTick + 1200 price limit, settle STOP and hold ETH proceeds as ERC-6909 claims. Owners claim proportional ETH and unsold STOP; rounding dust remains in the hook. The seller pays automatic execution gas. There is no hook fee or administrative control; hookData is ignored. This manifest does not authorize deployment or set launch policy. Independent review, source publication, signed artifact linkage, policy compatibility, admission and deployment belong to the subsequent review and service stages; their completion is not asserted here."
+}
