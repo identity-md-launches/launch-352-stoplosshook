@@ -11,6 +11,7 @@ import {PoolKey} from "v4-core/src/types/PoolKey.sol";
 import {PoolId} from "v4-core/src/types/PoolId.sol";
 import {SwapParams} from "v4-core/src/types/PoolOperation.sol";
 import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
+import {TransientStateLibrary} from "v4-core/src/libraries/TransientStateLibrary.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {TickBitmap} from "v4-core/src/libraries/TickBitmap.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -68,11 +69,38 @@ contract OrderHandler is Test {
         (uint160 price, int24 tick,,) = manager.getSlot0(poolId);
         uint160 limit = TickMath.getSqrtPriceAtTick(target);
         if (target == tick || price == limit) return;
-        driver.swap(key, SwapParams(limit < price, -int256(1e26), limit));
+        bool buy = limit < price;
+        bytes32 beforeOrders;
+        if (buy) beforeOrders = _orderDigest();
+        driver.swap(key, SwapParams(buy, -int256(1e26), limit));
+        if (buy) assertEq(_orderDigest(), beforeOrders, "buy changed orders or executed an epoch");
+    }
+
+    function _orderDigest() internal view returns (bytes32 digest) {
+        digest = keccak256(
+            abi.encode(
+                IERC20(Currency.unwrap(key.currency1)).balanceOf(address(hook)),
+                manager.balanceOf(address(hook), 0)
+            )
+        );
+        for (uint256 i = 1; i < hook.nextOrderId(); ++i) {
+            StopLossHook.Order memory o = hook.order(i);
+            digest = keccak256(
+                abi.encode(
+                    digest,
+                    o,
+                    hook.epoch(poolId, o.triggerTick, o.epoch),
+                    hook.openEpoch(poolId, o.triggerTick),
+                    hook.openAmount(poolId, o.triggerTick)
+                )
+            );
+        }
     }
 }
 
 contract AccountingInvariantTest is HookFixture {
+    using TransientStateLibrary for IPoolManager;
+
     OrderHandler handler;
 
     function setUp() public {
@@ -129,5 +157,14 @@ contract AccountingInvariantTest is HookFixture {
             bool active = hook.activeTicks(poolId, word) & (uint256(1) << bit) != 0;
             assertEq(active, hook.openAmount(poolId, o.triggerTick) != 0);
         }
+    }
+
+    function invariant_allPoolDeltasAreSettledAfterEveryAction() public view {
+        assertEq(manager.currencyDelta(address(hook), key.currency0), 0, "hook ETH delta");
+        assertEq(manager.currencyDelta(address(hook), key.currency1), 0, "hook STOP delta");
+        assertEq(manager.currencyDelta(address(driver), key.currency0), 0, "router ETH delta");
+        assertEq(manager.currencyDelta(address(driver), key.currency1), 0, "router STOP delta");
+        assertEq(manager.getNonzeroDeltaCount(), 0, "all accounts/currencies settled");
+        assertFalse(manager.isUnlocked(), "manager relocked");
     }
 }

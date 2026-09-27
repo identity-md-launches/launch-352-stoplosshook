@@ -49,8 +49,14 @@ contract PoolDriver is IUnlockCallback {
             require(manager.currencyDelta(address(key.hooks), key.currency0) == 0, "hook ETH debt");
             require(manager.currencyDelta(address(key.hooks), key.currency1) == 0, "hook STOP debt");
         }
+        require(manager.currencyDelta(address(this), key.currency0) == delta.amount0(), "router ETH delta");
+        require(manager.currencyDelta(address(this), key.currency1) == delta.amount1(), "router STOP delta");
         _settle(key.currency0, delta.amount0());
         _settle(key.currency1, delta.amount1());
+        // Inspect transient accounting while the unlock is still live, before the manager relocks.
+        require(manager.currencyDelta(address(this), key.currency0) == 0, "unsettled router ETH");
+        require(manager.currencyDelta(address(this), key.currency1) == 0, "unsettled router STOP");
+        require(manager.getNonzeroDeltaCount() == 0, "unsettled pool deltas");
         return abi.encode(BalanceDelta.unwrap(delta));
     }
 
